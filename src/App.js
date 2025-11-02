@@ -2,6 +2,9 @@ import React, { useState, useEffect, useRef } from 'react';
 import GanttChartExample from './components/GanttChartExample';
 import './App.css';
 
+// URL base de la API
+const API_BASE_URL = 'http://localhost:5000/api';
+
 const LoginRegister = () => {
   const [isLogin, setIsLogin] = useState(true);
   const [isAuthenticated, setIsAuthenticated] = useState(() => {
@@ -750,10 +753,11 @@ const LoginRegister = () => {
 const handleLogin = async (e) => {
   e.preventDefault();
   setLoginError('');
+  setSuccessMessage('');
 
   if (validateForm()) {
     try {
-      const response = await fetch('http://localhost:5187/api/Usuarios/login', {
+      const response = await fetch(`${API_BASE_URL}/Usuarios/login`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -762,20 +766,45 @@ const handleLogin = async (e) => {
         })
       });
 
+      // Mejor manejo de errores HTTP
       if (!response.ok) {
-        throw new Error('Correo o contrasena incorrectos');
+        const errorData = await response.json().catch(() => ({}));
+        const errorMessage = errorData.message || errorData.error || 
+                           (response.status === 404 ? 'Endpoint no encontrado. Verifica que el servidor tenga el endpoint /api/Usuarios/login' : 
+                            response.status === 401 ? 'Correo o contraseña incorrectos' : 
+                            `Error del servidor: ${response.status} ${response.statusText}`);
+        throw new Error(errorMessage);
       }
 
       const data = await response.json();
+
+      // Validar que la respuesta tenga la estructura esperada
+      if (!data || !data.usuario || !data.usuario.correo) {
+        throw new Error('Respuesta del servidor inválida');
+      }
 
       setIsAuthenticated(true);
       localStorage.setItem('isAuthenticated', 'true');
       setCurrentUser(data.usuario.correo);
       localStorage.setItem('currentUser', data.usuario.correo);
       setSuccessMessage('Inicio de sesión exitoso!');
+      setFormData({ nombre: '', correo: '', contrasena: '', confirmarcontrasena: '' });
     } catch (error) {
       console.error("❌ Error de red o servidor:", error);
-     setLoginError("No se pudo conectar con el servidor. Intenta más tarde.");
+      console.error("Detalles del error:", {
+        message: error.message,
+        name: error.name,
+        stack: error.stack
+      });
+      
+      // Mostrar mensaje de error más específico
+      if (error.message.includes('Failed to fetch') || error.message.includes('NetworkError')) {
+        setLoginError("No se pudo conectar con el servidor. Verifica que el servidor esté corriendo en http://localhost:5000");
+      } else if (error.message.includes('Endpoint no encontrado')) {
+        setLoginError(error.message);
+      } else {
+        setLoginError(error.message || "No se pudo conectar con el servidor. Intenta más tarde.");
+      }
     }
   }
 };
@@ -785,21 +814,24 @@ const handleLogin = async (e) => {
   const handleRegister = async (e) => {
   e.preventDefault();
   setSuccessMessage('');
+  setLoginError('');
 
   if (validateForm()) {
     try {
-      const response = await fetch('http://localhost:5187/api/Usuarios', {
+      const response = await fetch(`${API_BASE_URL}/Usuarios`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            nombre: formData.nombre,
-            correo: formData.correo.trim().toLowerCase(),
-            contrasena: formData.contrasena.trim()
-          })
-        });
+        body: JSON.stringify({
+          nombre: formData.nombre,
+          correo: formData.correo.trim().toLowerCase(),
+          contrasena: formData.contrasena.trim()
+        })
+      });
 
       if (!response.ok) {
-        throw new Error('Error al registrar usuario');
+        const errorData = await response.json().catch(() => ({}));
+        const errorMessage = errorData.message || errorData.error || 'Error al registrar usuario';
+        throw new Error(errorMessage);
       }
 
       setSuccessMessage('Usuario registrado exitosamente!');
@@ -807,7 +839,11 @@ const handleLogin = async (e) => {
       setIsLogin(true);
     } catch (error) {
       console.error("❌ Error de red o servidor:", error);
-     setLoginError("No se pudo conectar con el servidor. Intenta más tarde.");
+      if (error.message.includes('Failed to fetch') || error.message.includes('NetworkError')) {
+        setLoginError("No se pudo conectar con el servidor. Verifica que el servidor esté corriendo en http://localhost:5000");
+      } else {
+        setLoginError(error.message || "No se pudo conectar con el servidor. Intenta más tarde.");
+      }
     }
   }
 };
